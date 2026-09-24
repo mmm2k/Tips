@@ -10,6 +10,15 @@ const ESPN = "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scorebo
 const CODE_FIX = { WSH: "WAS", JAX: "JAC", LAR: "LA" };
 const code = (abbr) => CODE_FIX[abbr] || abbr;
 
+// Works with both key styles:
+//  - new secret keys (sb_secret_...) must go ONLY in the apikey header
+//  - legacy service_role keys (JWTs starting "eyJ") also go in Authorization
+function serverHeaders(key) {
+  const h = { apikey: key };
+  if (key && key.startsWith("eyJ")) h.Authorization = `Bearer ${key}`;
+  return h;
+}
+
 async function isAllowed(req) {
   const { SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY, CRON_SECRET } = process.env;
   const token = (req.headers.authorization || "").replace(/^Bearer\s+/i, "");
@@ -22,7 +31,7 @@ async function isAllowed(req) {
   if (!u.ok) return false;
   const user = await u.json();
   const a = await fetch(`${SUPABASE_URL}/rest/v1/admins?user_id=eq.${encodeURIComponent(user.id)}&select=user_id`, {
-    headers: { apikey: SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
+    headers: serverHeaders(SUPABASE_SERVICE_ROLE_KEY),
   });
   return a.ok && (await a.json()).length > 0;
 }
@@ -76,11 +85,7 @@ export default async function handler(req, res) {
     if (!games.length) return res.status(200).json({ updated: 0, weeks: [], note: "No regular-season games found" });
 
     // Keep anything already stored on a game (like a venue note) and overwrite the rest
-    const headers = {
-      apikey: SUPABASE_SERVICE_ROLE_KEY,
-      Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-      "Content-Type": "application/json",
-    };
+    const headers = { ...serverHeaders(SUPABASE_SERVICE_ROLE_KEY), "Content-Type": "application/json" };
     const existingRes = await fetch(`${SUPABASE_URL}/rest/v1/docs?collection=eq.games&select=id,data`, { headers });
     const existing = Object.fromEntries((await existingRes.json()).map((r) => [r.id, r.data]));
     const now = new Date().toISOString();
