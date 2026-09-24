@@ -1,0 +1,6 @@
+{
+  "name": "nfl-tipping",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=18" }
+}
