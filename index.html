@@ -205,7 +205,7 @@ h3.sub{font:600 1.2rem/1.2 var(--display);margin:30px 0 6px}
 <main class="wrap" id="main"><div class="empty">Loading the comp…</div></main>
 <div id="toast" role="status" aria-live="polite"></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
-<script src="/supabase-adapter.js?v=4"></script>
+<script src="/supabase-adapter.js?v=5"></script>
 <script>
 const TEAMS={ARI:"Cardinals",ATL:"Falcons",BAL:"Ravens",BUF:"Bills",CAR:"Panthers",CHI:"Bears",CIN:"Bengals",CLE:"Browns",DAL:"Cowboys",DEN:"Broncos",DET:"Lions",GB:"Packers",HOU:"Texans",IND:"Colts",JAC:"Jaguars",KC:"Chiefs",LA:"Rams",LAC:"Chargers",LV:"Raiders",MIA:"Dolphins",MIN:"Vikings",NE:"Patriots",NO:"Saints",NYG:"Giants",NYJ:"Jets",PHI:"Eagles",PIT:"Steelers",SEA:"Seahawks",SF:"49ers",TB:"Buccaneers",TEN:"Titans",WAS:"Commanders"};
 const PICK_PTS=4,TEAM_PTS=1;
@@ -470,8 +470,11 @@ function renderAdmin(m){
       b.disabled=true;b.textContent="Loading…";S.syncMsg="Loading from ESPN…";const st=document.getElementById("syncStatus");if(st)st.textContent=S.syncMsg;
       try{const r=await window.claude.syncResults(opts);S.syncMsg="Done: updated "+r.updated+" games"+(r.weeks.length===1?" from week "+r.weeks[0]:r.weeks.length?" from weeks "+(r.weeks.length>4?r.weeks[0]+" to "+r.weeks[r.weeks.length-1]:r.weeks.join(", ")):"")+(r.note?". "+r.note:"")+".";
         const asked=opts&&opts.season?"season":opts&&opts.week?"week "+opts.week:"default";
-        if(!r.version)S.syncMsg+=" Problem: the server is still running the old sync-results.js, so it ignored the week you chose. Check the file inside the api folder on GitHub.";
-        else if(r.mode!==asked)S.syncMsg+=" Problem: your choice never reached the server, which means an old supabase-adapter.js is being used. Check that file on GitHub, then reload this page.";
+        if(r.mode!==asked){
+          if(!r.version||r.version<"3")S.syncMsg+=" Problem: the server is running an older sync-results.js (version "+(r.version||"1")+"). Replace the one inside the api folder.";
+          else if(!r.debug||!r.debug.adapter)S.syncMsg+=" Problem: the page is using an older supabase-adapter.js. Replace it at the top level of the repo, then reload.";
+          else S.syncMsg+=" Problem: the server didn't receive your choice. Details for Claude: "+JSON.stringify(r.debug);
+        }
         toast("Updated "+r.updated+" games"+(r.weeks.length===1?" from week "+r.weeks[0]:r.weeks.length?" from weeks "+(r.weeks.length>4?r.weeks[0]+" to "+r.weeks[r.weeks.length-1]:r.weeks.join(", ")):""));}
       catch(e){S.syncMsg="That didn't work: "+e.message;toast(S.syncMsg);}
       b.disabled=false;b.textContent=label;
