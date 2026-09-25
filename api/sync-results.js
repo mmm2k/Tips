@@ -19,6 +19,24 @@ function serverHeaders(key) {
   return h;
 }
 
+// Reads a JSON request body whether or not Vercel has already parsed it
+async function readBody(req) {
+  try {
+    if (req.body && typeof req.body === "object") return req.body;
+    if (typeof req.body === "string" && req.body) return JSON.parse(req.body);
+    if (req.method !== "POST" || typeof req.on !== "function") return {};
+    const raw = await new Promise((resolve) => {
+      let d = "";
+      req.on("data", (c) => (d += c));
+      req.on("end", () => resolve(d));
+      req.on("error", () => resolve(""));
+    });
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
 async function isAllowed(req) {
   const { SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY, CRON_SECRET } = process.env;
   const token = (req.headers.authorization || "").replace(/^Bearer\s+/i, "");
@@ -71,7 +89,7 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: "Supabase environment variables are missing" });
   }
   try {
-    if (!(await isAllowed(req))) return res.status(401).json({ error: "Only admins can sync results", version: "2" });
+    if (!(await isAllowed(req))) return res.status(401).json({ error: "Only admins can sync results", version: "3" });
 
     const current = await (await fetch(ESPN)).json();
     const wk = current.week && current.week.number;
@@ -79,10 +97,12 @@ export default async function handler(req, res) {
     const getWeek = async (n) => (await fetch(`${ESPN}?seasontype=2&week=${n}&dates=${year}`)).json();
 
     // Which weeks to load: ?week=N (one week), ?season=1 (all 18), or the default
-    // Read the options straight from the address, e.g. /api/sync-results?week=1
+    // Options can arrive in the address (?week=1) or in the request body ({"week":"1"})
     const params = new URL(req.url || "/", "http://localhost").searchParams;
-    const seasonParam = params.get("season");
-    const oneWeek = parseInt(params.get("week"), 10);
+    const body = await readBody(req);
+    const seasonParam = params.get("season") || (body.season === true || body.season === "1" ? "1" : "");
+    const oneWeek = parseInt(params.get("week") || body.week, 10);
+    const debug = { url: req.url || "", body, adapter: req.headers["x-adapter-version"] || null };
     const mode = seasonParam === "1" || seasonParam === "true" ? "season" : oneWeek >= 1 && oneWeek <= 18 ? "week " + oneWeek : "default";
     let boards;
     if (mode === "season") {
@@ -99,7 +119,7 @@ export default async function handler(req, res) {
       }
     }
     const games = boards.flatMap(gamesFromBoard);
-    if (!games.length) return res.status(200).json({ updated: 0, weeks: [], mode, note: "No regular-season games found" });
+    if (!games.length) return res.status(200).json({ updated: 0, weeks: [], mode, debug, version: "3", note: "No regular-season games found" });
 
     // Keep anything already stored on a game (like a venue note) and overwrite the rest
     const headers = { ...serverHeaders(SUPABASE_SERVICE_ROLE_KEY), "Content-Type": "application/json" };
@@ -120,7 +140,7 @@ export default async function handler(req, res) {
     if (!up.ok) return res.status(500).json({ error: "Database write failed: " + (await up.text()) });
 
     const weeks = [...new Set(games.map((g) => g.data.week))].sort((a, b) => a - b);
-    return res.status(200).json({ updated: rows.length, weeks, mode, version: "2" });
+    return res.status(200).json({ updated: rows.length, weeks, mode, debug, version: "3" });
   } catch (e) {
     return res.status(500).json({ error: String(e.message || e) });
   }

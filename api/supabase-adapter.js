@@ -199,10 +199,16 @@
       location.reload();
     },
     async syncResults(opts) {
-      const qs = opts && opts.season ? "?season=1" : opts && opts.week ? "?week=" + encodeURIComponent(opts.week) : "";
+      const body = { season: !!(opts && opts.season), week: opts && opts.week ? String(opts.week) : "" };
+      const qs = body.season ? "?season=1" : body.week ? "?week=" + encodeURIComponent(body.week) : "";
       const r = await fetch("/api/sync-results" + qs, {
         method: "POST",
-        headers: { Authorization: "Bearer " + session.access_token },
+        headers: {
+          Authorization: "Bearer " + session.access_token,
+          "Content-Type": "application/json",
+          "X-Adapter-Version": "5",
+        },
+        body: JSON.stringify(body),
       });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(j.error || "the server said no (" + r.status + ")");
