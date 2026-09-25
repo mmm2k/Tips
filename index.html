@@ -165,6 +165,8 @@ input.sc{width:4.2rem;text-align:center;font:600 1.2rem/1 var(--display)}
 .chip{position:relative;border:1px solid var(--rule);border-radius:8px;padding:4px 10px;font:700 1.15rem/1.1 var(--display);display:flex;gap:6px;align-items:baseline}
 .chip small{font:500 .75rem/1 var(--body);color:var(--muted)}
 .chip.pick{border-color:var(--pen);color:var(--pen);border-width:2px}
+.picklabel{font:700 .65rem/1 var(--body);letter-spacing:.06em;background:var(--pen);color:var(--card);border-radius:4px;padding:3px 5px;align-self:center}
+.nopick{margin:8px 0 0;font-size:.82rem;color:var(--muted)}
 .chip.won{background:color-mix(in srgb,var(--tick) 14%,transparent)}
 .chip.lost{opacity:.6}
 .fx{display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--rule);font-size:.92rem}
@@ -263,12 +265,8 @@ function validPick(uid,w){
   const g=gameOf(p.t,w);if(!g)return null;
   return Date.parse(p.at)<kickMs(g)?p.t:null;
 }
-/* Others see a pick only once that game has kicked off */
-function visiblePick(uid,w){
-  const t=validPick(uid,w);if(!t)return null;
-  if(uid===S.uid)return t;
-  const g=gameOf(t,w);return g&&isLocked(g)?t:null;
-}
+/* Picks are visible to everyone as soon as they're made */
+function visiblePick(uid,w){return validPick(uid,w);}
 function teamResult(uid,w,team){
   const g=gameOf(team,w);if(!g||!isFinal(g))return null;
   const won=winner(g)===team;const isPick=validPick(uid,w)===team;
@@ -407,7 +405,7 @@ function renderTeams(m){
   weekPicker(m);
   const w=S.week,ids=members();
   if(!ids.length){m.append(h("div",{class:"empty",text:"No one has been given teams yet."}));return;}
-  m.append(h("p",{class:"summary",text:"Everyone's four teams for week "+w+". A pick shows once that team's game kicks off."}));
+  m.append(h("p",{class:"summary",text:"Everyone's four teams and pick of the round for week "+w+"."}));
   for(const uid of ids){
     const vp=visiblePick(uid,w),s=weekScore(uid,w);
     const chips=h("div",{class:"chips"});
@@ -415,12 +413,13 @@ function renderTeams(m){
       const r=teamResult(uid,w,t),g=gameOf(t,w);
       let cls="chip"+(vp===t?" pick":"");
       if(r)cls+=r.won?" won":" lost";
-      chips.append(h("span",{class:cls,title:(TEAMS[t]||t)+(g?" "+oppText(t,g):", bye")},t,
+      chips.append(h("span",{class:cls,title:(TEAMS[t]||t)+(g?" "+oppText(t,g):", bye")+(vp===t?", pick of the round":"")},vp===t?h("span",{class:"picklabel",text:"PICK"}):null,t,
         h("small",{text:g?(r?(r.pts?"+"+r.pts:"0"):(g.home===t?"v ":"@ ")+(g.home===t?g.away:g.home)):"bye"})));
     }
     m.append(h("div",{class:"member"+(uid===S.uid?" me":"")},
       h("div",{class:"mhead"},h("strong",{text:displayName(uid)+(uid===S.uid?" (you)":"")}),
-        h("span",{class:"wk",text:s.decided?s.pts+" pts":""})),chips));
+        h("span",{class:"wk",text:s.decided?s.pts+" pts":""})),chips,
+      vp?null:h("p",{class:"nopick",text:"No pick yet this week"})));
   }
   const games=weekGames(w);
   if(games.length){
