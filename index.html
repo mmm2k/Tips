@@ -326,7 +326,7 @@ function setPick(code){
 function isField(el){return el&&(el.tagName==="INPUT"||el.tagName==="SELECT"||el.tagName==="TEXTAREA");}
 function render(){
   const a=document.activeElement;
-  if(S.tab==="admin"&&isField(a)&&$("#main").contains(a)){S.pendingRender=true;return;}
+  if(S.tab==="admin"&&(S.pointerDown||(isField(a)&&$("#main").contains(a)))){S.pendingRender=true;return;}
   S.pendingRender=false;
   const nm=S.settings.name||"NFL Tipping";$("#compName").textContent=nm;document.title=nm;
   renderWho();renderTabs();
@@ -335,7 +335,11 @@ function render(){
   if(!S.gamesReady){m.append(h("div",{class:"empty",text:"Loading the comp…"}));return;}
   ({pick:renderPick,teams:renderTeams,ladder:renderLadder,admin:renderAdmin})[S.tab](m);
 }
-document.addEventListener("focusout",()=>setTimeout(()=>{if(S.pendingRender&&!isField(document.activeElement))render();},0));
+function flushPending(){if(S.pendingRender&&!S.pointerDown&&!isField(document.activeElement))render();}
+document.addEventListener("pointerdown",()=>{S.pointerDown=true;},true);
+document.addEventListener("pointerup",()=>{S.pointerDown=false;setTimeout(flushPending,80);},true);
+document.addEventListener("pointercancel",()=>{S.pointerDown=false;setTimeout(flushPending,80);},true);
+document.addEventListener("focusout",()=>setTimeout(flushPending,80));
 
 function renderWho(){
   const w=$("#who");w.replaceChildren();
@@ -463,19 +467,21 @@ function renderAdmin(m){
       btn.disabled=false;btn.textContent="Sync NFL results now";
     }});
     const runSync=async(opts,b,label)=>{
-      b.disabled=true;b.textContent="Loading…";
-      try{const r=await window.claude.syncResults(opts);toast("Updated "+r.updated+" games"+(r.weeks.length===1?" from week "+r.weeks[0]:r.weeks.length?" from weeks "+(r.weeks.length>4?r.weeks[0]+" to "+r.weeks[r.weeks.length-1]:r.weeks.join(", ")):""));}
-      catch(e){toast("That didn't work: "+e.message);}
+      b.disabled=true;b.textContent="Loading…";S.syncMsg="Loading from ESPN…";const st=document.getElementById("syncStatus");if(st)st.textContent=S.syncMsg;
+      try{const r=await window.claude.syncResults(opts);S.syncMsg="Done: updated "+r.updated+" games"+(r.weeks.length===1?" from week "+r.weeks[0]:r.weeks.length?" from weeks "+(r.weeks.length>4?r.weeks[0]+" to "+r.weeks[r.weeks.length-1]:r.weeks.join(", ")):"")+(r.note?". "+r.note:"")+".";toast("Updated "+r.updated+" games"+(r.weeks.length===1?" from week "+r.weeks[0]:r.weeks.length?" from weeks "+(r.weeks.length>4?r.weeks[0]+" to "+r.weeks[r.weeks.length-1]:r.weeks.join(", ")):""));}
+      catch(e){S.syncMsg="That didn't work: "+e.message;toast(S.syncMsg);}
       b.disabled=false;b.textContent=label;
+      const st2=document.getElementById("syncStatus");if(st2)st2.textContent=S.syncMsg;
     };
-    const wkSel=h("select",{class:"t","aria-label":"Week to load"},Array.from({length:18},(_,i)=>h("option",{value:i+1,text:"Week "+(i+1)})));
+    const wkSel=h("select",{class:"t","aria-label":"Week to load",onchange:e=>{S.loadWeek=e.target.value;}},Array.from({length:18},(_,i)=>h("option",{value:i+1,text:"Week "+(i+1),selected:String(i+1)===String(S.loadWeek||1)?true:null})));
     const oneBtn=h("button",{class:"btn quiet",type:"button",text:"Load this week",onclick:()=>runSync({week:wkSel.value},oneBtn,"Load this week")});
     const allBtn=h("button",{class:"btn quiet",type:"button",text:"Load the whole season",onclick:()=>runSync({season:true},allBtn,"Load the whole season")});
     m.append(h("div",{class:"panel"},h("h2",{text:"NFL results"}),
       h("p",{text:"Sync pulls last week's results, this week's scores and next week's fixtures. It also runs automatically once a day."}),
       h("div",{class:"row"},btn),
       h("p",{style:"margin:14px 0 8px",text:"To fill in earlier or later weeks, load a single week or all 18 at once."}),
-      h("div",{class:"row"},wkSel,oneBtn,allBtn)));
+      h("div",{class:"row"},wkSel,oneBtn,allBtn),
+      h("p",{id:"syncStatus",role:"status","aria-live":"polite",style:"margin:12px 0 0;color:var(--ink);font-weight:500",text:S.syncMsg||""})));
   }
   // Name
   const nameIn=h("input",{class:"t",type:"text",maxlength:"40",value:S.settings.name||"NFL Tipping",style:"width:100%","aria-label":"Competition name"});
