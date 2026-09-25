@@ -74,12 +74,26 @@ export default async function handler(req, res) {
     if (!(await isAllowed(req))) return res.status(401).json({ error: "Only admins can sync results" });
 
     const current = await (await fetch(ESPN)).json();
-    const boards = [current];
     const wk = current.week && current.week.number;
-    const year = current.season && current.season.year;
-    if (current.season && current.season.type === 2 && wk) {
-      if (wk > 1) boards.push(await (await fetch(`${ESPN}?seasontype=2&week=${wk - 1}&dates=${year}`)).json());
-      if (wk < 18) boards.push(await (await fetch(`${ESPN}?seasontype=2&week=${wk + 1}&dates=${year}`)).json());
+    const year = (current.season && current.season.year) || new Date().getFullYear();
+    const getWeek = async (n) => (await fetch(`${ESPN}?seasontype=2&week=${n}&dates=${year}`)).json();
+
+    // Which weeks to load: ?week=N (one week), ?season=1 (all 18), or the default
+    const q = req.query || {};
+    const oneWeek = parseInt(q.week, 10);
+    let boards;
+    if (q.season === "1" || q.season === "true") {
+      boards = await Promise.all(Array.from({ length: 18 }, (_, i) => getWeek(i + 1)));
+    } else if (oneWeek >= 1 && oneWeek <= 18) {
+      boards = [await getWeek(oneWeek)];
+    } else {
+      boards = [current];
+      if (current.season && current.season.type === 2 && wk) {
+        const extra = [];
+        if (wk > 1) extra.push(getWeek(wk - 1));
+        if (wk < 18) extra.push(getWeek(wk + 1));
+        boards.push(...(await Promise.all(extra)));
+      }
     }
     const games = boards.flatMap(gamesFromBoard);
     if (!games.length) return res.status(200).json({ updated: 0, weeks: [], note: "No regular-season games found" });
